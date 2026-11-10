@@ -8,7 +8,7 @@ GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 
 # --- Models ---
 EMBEDDING_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
-GROQ_MODEL = "llama-3.3-70b-versatile"   # check Groq's docs for currently available models
+GROQ_MODEL = "qwen/qwen3.8-27b"   # check Groq's docs for currently available models
 
 # --- Chunking ---
 CHUNK_SIZE = 1000      # max characters per chunk
