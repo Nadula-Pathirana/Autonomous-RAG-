@@ -5,9 +5,10 @@ load_dotenv()  # reads the .env file into environment variables
 
 # --- API keys (never hardcode these) ---
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
+GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
 
 # --- Models ---
-EMBEDDING_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
+EMBEDDING_MODEL = "models/gemini-embedding-001"
 GROQ_MODEL = "qwen/qwen3.8-27b"   # check Groq's docs for currently available models
 
 # --- Chunking ---

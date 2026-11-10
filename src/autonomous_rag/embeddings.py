@@ -1,12 +1,13 @@
 from functools import lru_cache
 
-# pyrefly: ignore[missing-import]
-from langchain_huggingface import HuggingFaceEmbeddings
-
-from config import EMBEDDING_MODEL
+from langchain_google_genai import GoogleGenerativeAIEmbeddings
+from config import EMBEDDING_MODEL, GOOGLE_API_KEY
 
 
 @lru_cache(maxsize=1)
-def get_embeddings() -> HuggingFaceEmbeddings:
+def get_embeddings() -> GoogleGenerativeAIEmbeddings:
     """Load the embedding model once and reuse it (loading is slow)."""
-    return HuggingFaceEmbeddings(model_name=EMBEDDING_MODEL)
+    return GoogleGenerativeAIEmbeddings(
+        model=EMBEDDING_MODEL,
+        google_api_key=GOOGLE_API_KEY
+    )
