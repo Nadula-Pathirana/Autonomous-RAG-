@@ -12,13 +12,13 @@ st.title("📚 AutoRAG Assistant (V1)")
 
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
-# --- Session state setup ---
+# Session state setup 
 if "messages" not in st.session_state:
     st.session_state.messages = []          # chat history for display
 if "processed_files" not in st.session_state:
     st.session_state.processed_files = []   # filenames already added this session
 
-# --- Sidebar: document upload ---
+# Sidebar: document upload 
 with st.sidebar:
     st.header("Documents")
     uploaded_files = st.file_uploader(

@@ -7,6 +7,10 @@ from langchain_groq import ChatGroq
 
 from config import GROQ_API_KEY, GROQ_MODEL
 from autonomous_rag.vector_store import search
+#This Python file all about given the system prompt 
+#and creating a function for the LLM model 
+#Turning a long chain document list into a proper string 
+#Creating a function for receiving the answers when a user asks a question 
 
 SYSTEM_PROMPT = """You are a helpful assistant that answers questions using ONLY the \
 context provided below.

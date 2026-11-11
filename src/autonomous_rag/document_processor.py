@@ -8,7 +8,7 @@ from pypdf import PdfReader
 
 from config import CHUNK_SIZE, CHUNK_OVERLAP
 
-
+#This Python file is all about reading the pages from the PDF using PyPDF, making the page dictionary, chunking those, and making the long chain document list. 
 def extract_pages(pdf_path: str) -> dict[int, str]:
     """Read a PDF and return {page_number: page_text} (page numbers start at 1)."""
     reader = PdfReader(pdf_path)

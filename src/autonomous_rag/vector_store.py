@@ -7,6 +7,9 @@ from langchain_core.documents import Document
 from config import CHROMA_DIR, COLLECTION_NAME, TOP_K
 from autonomous_rag.embeddings import get_embeddings
 
+#This Python file is all about creating a function for creating a vector database locally
+#Add documents to that vector database. 
+#Creating a function to return top chunks 
 
 @lru_cache(maxsize=1)
 def get_vector_store() -> Chroma:
