@@ -11,3 +11,5 @@ wheels/
 .env
 chroma_db/
 data/uploads/
+
+project_summary.md
