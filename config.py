@@ -22,11 +22,7 @@ TOP_K = 4              # how many chunks to retrieve per question
 # --- Paths ---
 UPLOAD_DIR = "data/uploads"
 CHROMA_DIR = "chroma_db"
-COLLECTION_NAME = "knowledge_base"
-
-# --- Models ---
-EMBEDDING_MODEL = "models/gemini-embedding-001"
-GROQ_MODEL = "llama-3.3-70b-versatile"                # CHANGED: reliable tool calling
+COLLECTION_NAME = "knowledge_base"              
 
 # --- Agent ---
 MAX_WEB_RESULTS = 3          # how many web results Tavily returns
