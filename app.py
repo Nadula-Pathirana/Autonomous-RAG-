@@ -3,14 +3,43 @@ import os
 import streamlit as st
 
 from config import UPLOAD_DIR
+from autonomous_rag.agent import run_agent
 from autonomous_rag.document_processor import process_pdf
-from autonomous_rag.llm import answer_question
 from autonomous_rag.vector_store import add_documents
 
 st.set_page_config(page_title="AutoRAG Assistant", page_icon="📚")
-st.title("📚 AutoRAG Assistant (V1)")
+st.title("📚 AutoRAG Assistant (V2)")
 
 os.makedirs(UPLOAD_DIR, exist_ok=True)
+
+TOOL_LABELS = {
+    "search_knowledge_base": "📄 Your documents",
+    "search_web": "🌐 Web",
+}
+
+
+def render_steps(steps: list[dict]) -> None:
+    """Show which tools the agent used and what they returned."""
+    tools_used = []
+    for step in steps:
+        if step["type"] == "call" and step["tool"] not in tools_used:
+            tools_used.append(step["tool"])
+
+    if not tools_used:
+        st.caption("Answered without searching.")
+        return
+
+    st.caption("Sources used: " + "  ·  ".join(TOOL_LABELS.get(t, t) for t in tools_used))
+    with st.expander("Agent steps"):
+        for step in steps:
+            label = TOOL_LABELS.get(step["tool"], step["tool"])
+            if step["type"] == "call":
+                st.markdown(f"**➡️ Called** {label}")
+                st.json(step["input"])
+            else:
+                st.markdown(f"**⬅️ Result from** {label}")
+                st.text(step["output"][:1500])
+
 
 # Session state setup 
 if "messages" not in st.session_state:
@@ -54,29 +83,26 @@ with st.sidebar:
 for msg in st.session_state.messages:
     with st.chat_message(msg["role"]):
         st.markdown(msg["content"])
+        if msg["role"] == "assistant":
+            render_steps(msg.get("steps", []))
 
 # --- Chat input ---
-if question := st.chat_input("Ask a question about your documents"):
+if question := st.chat_input("Ask about your documents, or anything else"):
     st.session_state.messages.append({"role": "user", "content": question})
     with st.chat_message("user"):
         st.markdown(question)
 
     with st.chat_message("assistant"):
+        steps = []
         try:
             with st.spinner("Thinking..."):
-                answer, chunks = answer_question(question)
+                answer, steps = run_agent(question)
             st.markdown(answer)
-
-            # Show retrieved chunks, which is very useful while learning/debugging
-            if chunks:
-                with st.expander("Retrieved chunks"):
-                    for c in chunks:
-                        st.caption(
-                            f"Source: {c.metadata.get('source')}, page {c.metadata.get('page')}"
-                        )
-                        st.text(c.page_content[:500])
+            render_steps(steps)
         except Exception as e:
             answer = f"Something went wrong: {e}"
             st.error(answer)
 
-    st.session_state.messages.append({"role": "assistant", "content": answer})
+    st.session_state.messages.append(
+        {"role": "assistant", "content": answer, "steps": steps}
+    )
