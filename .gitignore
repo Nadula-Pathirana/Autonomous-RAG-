@@ -11,5 +11,5 @@ wheels/
 .env
 chroma_db/
 data/uploads/
-src
-config.py
+
+project_summary.md
