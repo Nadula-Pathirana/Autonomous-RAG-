@@ -2,13 +2,14 @@ import os
 
 import streamlit as st
 
-from config import UPLOAD_DIR
+from config import MAX_HISTORY_MESSAGES, UPLOAD_DIR
 from autonomous_rag.agent import run_agent
 from autonomous_rag.document_processor import process_pdf
+from autonomous_rag.memory import build_history
 from autonomous_rag.vector_store import add_documents
 
 st.set_page_config(page_title="AutoRAG Assistant", page_icon="📚")
-st.title("📚 AutoRAG Assistant (V2)")
+st.title("AutoRAG Assistant (V3)")
 
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
@@ -16,6 +17,11 @@ TOOL_LABELS = {
     "search_knowledge_base": "📄 Your documents",
     "search_web": "🌐 Web",
 }
+
+
+def safe_markdown(text: str) -> str:
+    """Streamlit treats $...$ as math. Escape dollar signs so prices display normally."""
+    return text.replace("$", "\\$")
 
 
 def render_steps(steps: list[dict]) -> None:
@@ -41,13 +47,13 @@ def render_steps(steps: list[dict]) -> None:
                 st.text(step["output"][:1500])
 
 
-# Session state setup 
+# --- Session state setup ---
 if "messages" not in st.session_state:
-    st.session_state.messages = []          # chat history for display
+    st.session_state.messages = []          # chat history = the agent's memory
 if "processed_files" not in st.session_state:
     st.session_state.processed_files = []   # filenames already added this session
 
-# Sidebar: document upload 
+# --- Sidebar ---
 with st.sidebar:
     st.header("Documents")
     uploaded_files = st.file_uploader(
@@ -79,30 +85,46 @@ with st.sidebar:
         for name in st.session_state.processed_files:
             st.write(f"• {name}")
 
+    st.divider()
+    st.header("Conversation")
+    st.caption(f"🧠 Remembers the last {MAX_HISTORY_MESSAGES} messages")
+    if st.button("🗑 Clear conversation"):
+        st.session_state.messages = []
+        st.rerun()
+
 # --- Chat history display ---
 for msg in st.session_state.messages:
     with st.chat_message(msg["role"]):
-        st.markdown(msg["content"])
+        st.markdown(safe_markdown(msg["content"]))
         if msg["role"] == "assistant":
             render_steps(msg.get("steps", []))
 
 # --- Chat input ---
 if question := st.chat_input("Ask about your documents, or anything else"):
-    st.session_state.messages.append({"role": "user", "content": question})
-    with st.chat_message("user"):
-        st.markdown(question)
+    # 1. Build the memory from the PREVIOUS messages (before adding this question)
+    history = build_history(st.session_state.messages)
 
+    # 2. Now show and store the new question
+    user_msg = {"role": "user", "content": question}
+    st.session_state.messages.append(user_msg)
+    with st.chat_message("user"):
+        st.markdown(safe_markdown(question))
+
+    # 3. Ask the agent, giving it the history
     with st.chat_message("assistant"):
         steps = []
+        failed = False
         try:
             with st.spinner("Thinking..."):
-                answer, steps = run_agent(question)
-            st.markdown(answer)
+                answer, steps = run_agent(question, history)
+            st.markdown(safe_markdown(answer))
             render_steps(steps)
         except Exception as e:
             answer = f"Something went wrong: {e}"
+            failed = True
+            user_msg["error"] = True   # don't remember a question that failed
             st.error(answer)
 
     st.session_state.messages.append(
-        {"role": "assistant", "content": answer, "steps": steps}
+        {"role": "assistant", "content": answer, "steps": steps, "error": failed}
     )

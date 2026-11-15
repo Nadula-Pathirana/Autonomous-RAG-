@@ -9,8 +9,9 @@ def search_knowledge_base(query: str) -> str:
 
     Use this tool when the question is about the content of the user's own
     files, company documents, reports, or anything that might be in the
-    documents they uploaded. Input should be a focused search query, not a
-    full conversation.
+    documents they uploaded. The query must be a complete, standalone search
+    phrase that names the topic (for example "AetherTech price match
+    guarantee exclusions"). Never use pronouns such as "it" or "that".
     """
     try:
         chunks = search(query)

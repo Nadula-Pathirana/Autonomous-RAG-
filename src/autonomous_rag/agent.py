@@ -5,17 +5,17 @@ from langchain.agents import create_agent
 from langchain_core.messages import AIMessage, ToolMessage
 from langgraph.errors import GraphRecursionError
 
-from config import AGENT_RECURSION_LIMIT
+from config import AGENT_RECURSION_LIMIT, GROQ_FALLBACK_MODEL, GROQ_MODEL
 from autonomous_rag.llm import get_llm
 from autonomous_rag.prompts import SYSTEM_PROMPT
 from autonomous_rag.tools import ALL_TOOLS
 
 
-@lru_cache(maxsize=2)
-def get_agent(today: str):
-    """Build the agent. Cached per date so the prompt always has today's date."""
+@lru_cache(maxsize=4)
+def get_agent(today: str, model_name: str = GROQ_MODEL):
+    """Build the agent. Cached per date and model."""
     return create_agent(
-        model=get_llm(),
+        model=get_llm(model_name),
         tools=ALL_TOOLS,
         system_prompt=SYSTEM_PROMPT.format(today=today),
     )
@@ -51,22 +51,45 @@ def _extract_steps(messages: list) -> list[dict]:
     return steps
 
 
-def run_agent(question: str) -> tuple[str, list[dict]]:
-    """Run the agent on a question. Returns (answer, steps)."""
-    agent = get_agent(date.today().isoformat())
+def run_agent(
+    question: str, history: list[dict] | None = None
+) -> tuple[str, list[dict]]:
+    """Run the agent on a question, with earlier messages as memory.
 
-    try:
-        result = agent.invoke(
-            {"messages": [{"role": "user", "content": question}]},
-            config={"recursion_limit": AGENT_RECURSION_LIMIT},
-        )
-    except GraphRecursionError:
-        return (
-            "I got stuck in a loop while researching this. "
-            "Try rephrasing or asking a simpler question.",
-            [],
-        )
+    Returns (answer, steps). Steps only cover THIS turn's tool calls.
+    """
+    input_messages = (history or []) + [{"role": "user", "content": question}]
+    today = date.today().isoformat()
 
-    messages = result["messages"]
-    answer = _as_text(messages[-1].content)
-    return answer, _extract_steps(messages)
+    # Try the primary model first, then the fallback (skipping duplicates)
+    models_to_try = list(dict.fromkeys([GROQ_MODEL, GROQ_FALLBACK_MODEL]))
+    last_error = None
+
+    for model_name in models_to_try:
+        agent = get_agent(today, model_name)
+        try:
+            result = agent.invoke(
+                {"messages": input_messages},
+                config={"recursion_limit": AGENT_RECURSION_LIMIT},
+            )
+        except GraphRecursionError:
+            return (
+                "I got stuck in a loop while researching this. "
+                "Try rephrasing or asking a simpler question.",
+                [],
+            )
+        except Exception as e:
+            # Groq rejects malformed tool calls with a 'tool_use_failed' error
+            if "tool_use_failed" in str(e):
+                last_error = e
+                continue  # try the next model
+            raise
+
+        # The result contains the input messages followed by the new ones.
+        # Slice off the input so we only look at what happened this turn.
+        new_messages = result["messages"][len(input_messages):]
+        answer = _as_text(new_messages[-1].content)
+        return answer, _extract_steps(new_messages)
+
+    # pyrefly: ignore[bad-raise]
+    raise last_error

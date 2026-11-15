@@ -17,7 +17,7 @@ CHUNK_SIZE = 1000      # max characters per chunk
 CHUNK_OVERLAP = 150    # characters shared between neighbouring chunks
 
 # --- Retrieval ---
-TOP_K = 4              # how many chunks to retrieve per question
+TOP_K = 3              # how many chunks to retrieve per question
 
 # --- Paths ---
 UPLOAD_DIR = "data/uploads"
@@ -27,3 +27,12 @@ COLLECTION_NAME = "knowledge_base"
 # --- Agent ---
 MAX_WEB_RESULTS = 3          # how many web results Tavily returns
 AGENT_RECURSION_LIMIT = 10   # NEW: safety cap on agent loop steps
+
+
+GROQ_FALLBACK_MODEL = "llama-3.3-70b-versatile"      # used if the primary writes a bad tool call
+
+
+# --- Memory ---
+MAX_HISTORY_MESSAGES = 10    # remember the last 10 messages (about 5 questions + 5 answers)
+MAX_HISTORY_CHARS = 6000     # total character budget for the remembered history
+MAX_MESSAGE_CHARS = 1500     # long old answers are shortened to this
