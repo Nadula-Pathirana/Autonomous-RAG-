@@ -11,8 +11,9 @@ def search_web(query: str) -> str:
 
     Use this tool for recent news, up-to-date facts, prices, public
     information about companies or people, or anything that is unlikely to
-    be in the user's uploaded documents. Input should be a concise web search
-    query.
+    be in the user's uploaded documents. The query must be a complete,
+    standalone search phrase that names the topic. Never use pronouns such as
+    "it" or "that".
     """
     if not TAVILY_API_KEY:
         return "Web search is unavailable: TAVILY_API_KEY is not set."
