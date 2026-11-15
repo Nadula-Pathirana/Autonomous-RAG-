@@ -7,6 +7,14 @@ from langchain_text_splitters import RecursiveCharacterTextSplitter
 from pypdf import PdfReader
 
 from config import CHUNK_SIZE, CHUNK_OVERLAP
+import re
+
+
+def clean_text(text: str) -> str:
+    """Collapse the messy line breaks and repeated spaces from PDF extraction."""
+    text = text.replace("\x00", "")
+    text = re.sub(r"\s+", " ", text)   # every run of spaces/newlines becomes one space
+    return text.strip()
 
 #This Python file is all about reading the pages from the PDF using PyPDF, making the page dictionary, chunking those, and making the long chain document list. 
 def extract_pages(pdf_path: str) -> dict[int, str]:
@@ -18,7 +26,7 @@ def extract_pages(pdf_path: str) -> dict[int, str]:
 
     pages: dict[int, str] = {}
     for page_number, page in enumerate(reader.pages, start=1):
-        text = (page.extract_text() or "").strip()
+        text = clean_text(page.extract_text() or "")
         if text:
             pages[page_number] = text
     return pages
