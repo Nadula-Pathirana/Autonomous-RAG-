@@ -29,7 +29,7 @@ MAX_WEB_RESULTS = 3          # how many web results Tavily returns
 AGENT_RECURSION_LIMIT = 10   # NEW: safety cap on agent loop steps
 
 
-GROQ_FALLBACK_MODEL = "llama-3.3-70b-versatile"      # used if the primary writes a bad tool call
+GROQ_FALLBACK_MODEL = "qwen/qwen3.8-27b"      # used if the primary writes a bad tool call
 
 
 # --- Memory ---
