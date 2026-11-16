@@ -31,3 +31,36 @@ def add_documents(chunks: list[Document]) -> None:
 def search(query: str, k: int = TOP_K) -> list[Document]:
     """Return the k chunks most similar to the query."""
     return get_vector_store().similarity_search(query, k=k)
+
+def list_documents() -> list[dict]:
+    """Return [{'name': 'sample.pdf', 'chunks': 12}, ...] for everything stored."""
+    data = get_vector_store().get(include=["metadatas"])
+    counts: dict[str, int] = {}
+    for metadata in data["metadatas"] or []:
+        name = (metadata or {}).get("source", "unknown")
+        counts[name] = counts.get(name, 0) + 1
+    return [{"name": name, "chunks": count} for name, count in sorted(counts.items())]
+
+
+def document_exists(filename: str) -> bool:
+    """Is a document with this file name already in the knowledge base?"""
+    data = get_vector_store().get(where={"source": filename}, limit=1)
+    return len(data["ids"]) > 0
+
+
+def delete_document(filename: str) -> int:
+    """Delete every chunk of one document. Returns how many chunks were removed."""
+    store = get_vector_store()
+    ids = store.get(where={"source": filename})["ids"]
+    if ids:
+        store.delete(ids=ids)
+    return len(ids)
+
+
+def clear_knowledge_base() -> int:
+    """Delete everything. Returns how many chunks were removed."""
+    store = get_vector_store()
+    ids = store.get()["ids"]
+    if ids:
+        store.delete(ids=ids)
+    return len(ids)

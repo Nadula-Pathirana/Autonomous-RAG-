@@ -1,3 +1,4 @@
+from dataclasses import dataclass, field
 from datetime import date
 from functools import lru_cache
 
@@ -8,7 +9,17 @@ from langgraph.errors import GraphRecursionError
 from config import AGENT_RECURSION_LIMIT, GROQ_FALLBACK_MODEL, GROQ_MODEL
 from autonomous_rag.llm import get_llm
 from autonomous_rag.prompts import SYSTEM_PROMPT
+from autonomous_rag.sources import dedupe_sources, mark_cited
 from autonomous_rag.tools import ALL_TOOLS
+
+
+@dataclass
+class AgentResult:
+    """Everything the UI needs from one agent run."""
+
+    answer: str
+    steps: list[dict] = field(default_factory=list)
+    sources: list[dict] = field(default_factory=list)
 
 
 @lru_cache(maxsize=4)
@@ -51,13 +62,17 @@ def _extract_steps(messages: list) -> list[dict]:
     return steps
 
 
-def run_agent(
-    question: str, history: list[dict] | None = None
-) -> tuple[str, list[dict]]:
-    """Run the agent on a question, with earlier messages as memory.
+def _extract_sources(messages: list, answer: str) -> list[dict]:
+    """Collect the structured sources attached to this turn's tool results."""
+    sources = []
+    for message in messages:
+        if isinstance(message, ToolMessage) and isinstance(message.artifact, list):
+            sources.extend(message.artifact)
+    return mark_cited(dedupe_sources(sources), answer)
 
-    Returns (answer, steps). Steps only cover THIS turn's tool calls.
-    """
+
+def run_agent(question: str, history: list[dict] | None = None) -> AgentResult:
+    """Run the agent on a question, with earlier messages as memory."""
     input_messages = (history or []) + [{"role": "user", "content": question}]
     today = date.today().isoformat()
 
@@ -73,10 +88,11 @@ def run_agent(
                 config={"recursion_limit": AGENT_RECURSION_LIMIT},
             )
         except GraphRecursionError:
-            return (
-                "I got stuck in a loop while researching this. "
-                "Try rephrasing or asking a simpler question.",
-                [],
+            return AgentResult(
+                answer=(
+                    "I got stuck in a loop while researching this. "
+                    "Try rephrasing or asking a simpler question."
+                )
             )
         except Exception as e:
             # Groq rejects malformed tool calls with a 'tool_use_failed' error
@@ -85,11 +101,14 @@ def run_agent(
                 continue  # try the next model
             raise
 
-        # The result contains the input messages followed by the new ones.
-        # Slice off the input so we only look at what happened this turn.
+        # Keep only the messages created during THIS turn
         new_messages = result["messages"][len(input_messages):]
         answer = _as_text(new_messages[-1].content)
-        return answer, _extract_steps(new_messages)
+        return AgentResult(
+            answer=answer,
+            steps=_extract_steps(new_messages),
+            sources=_extract_sources(new_messages, answer),
+        )
 
     # pyrefly: ignore[bad-raise]
     raise last_error

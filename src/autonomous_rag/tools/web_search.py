@@ -2,11 +2,12 @@ from langchain_core.tools import tool
 # pyrefly: ignore[missing-import]
 from tavily import TavilyClient
 
+from autonomous_rag.sources import web_source
 from config import MAX_WEB_RESULTS, TAVILY_API_KEY
 
 
-@tool
-def search_web(query: str) -> str:
+@tool(response_format="content_and_artifact")
+def search_web(query: str) -> tuple[str, list[dict]]:
     """Search the INTERNET for current or external information.
 
     Use this tool for recent news, up-to-date facts, prices, public
@@ -16,23 +17,26 @@ def search_web(query: str) -> str:
     "it" or "that".
     """
     if not TAVILY_API_KEY:
-        return "Web search is unavailable: TAVILY_API_KEY is not set."
+        return "Web search is unavailable: TAVILY_API_KEY is not set.", []
 
     try:
         client = TavilyClient(api_key=TAVILY_API_KEY)
         response = client.search(query=query, max_results=MAX_WEB_RESULTS)
     except Exception as e:
-        return f"Web search failed: {e}"
+        return f"Web search failed: {e}", []
 
     results = response.get("results", [])
     if not results:
-        return "No web results found."
+        return "No web results found.", []
 
     parts = []
-    for i, r in enumerate(results, start=1):
-        parts.append(
-            f"[WEB-{i}: {r.get('title', 'Untitled')}]\n"
-            f"URL: {r.get('url', 'N/A')}\n"
-            f"{r.get('content', '')}"
-        )
-    return "\n\n".join(parts)
+    sources = []
+    for r in results:
+        title = r.get("title") or "Untitled"
+        url = r.get("url", "")
+        content = r.get("content", "")
+        # The heading is a ready-made markdown link the agent can copy
+        parts.append(f"[{title}]({url})\n{content}")
+        sources.append(web_source(title, url, content))
+
+    return "\n\n".join(parts), sources
