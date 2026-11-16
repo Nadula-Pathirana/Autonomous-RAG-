@@ -6,10 +6,16 @@ from config import MAX_HISTORY_MESSAGES, UPLOAD_DIR
 from autonomous_rag.agent import run_agent
 from autonomous_rag.document_processor import process_pdf
 from autonomous_rag.memory import build_history
-from autonomous_rag.vector_store import add_documents
+from autonomous_rag.vector_store import (
+    add_documents,
+    clear_knowledge_base,
+    delete_document,
+    document_exists,
+    list_documents,
+)
 
-st.set_page_config(page_title="AutoRAG Assistant", page_icon="📚")
-st.title("AutoRAG Assistant (V3)")
+st.set_page_config(page_title="AutoRAG Assistant", page_icon="📚",layout="wide")
+st.title("AutoRAG Assistant (V4)")
 
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
@@ -24,6 +30,32 @@ def safe_markdown(text: str) -> str:
     return text.replace("$", "\\$")
 
 
+def render_sources(sources: list[dict]) -> None:
+    """Show where the information came from. ✅ = the answer actually cites it."""
+    if not sources:
+        return
+
+    documents = [s for s in sources if s["type"] == "document"]
+    web = [s for s in sources if s["type"] == "web"]
+
+    with st.expander(f"Sources ({len(sources)})"):
+        st.caption("✅ = mentioned in the answer. Others were retrieved but not cited.")
+
+        if documents:
+            st.markdown("**📄 From your documents**")
+            for s in documents:
+                mark = "✅ " if s.get("cited") else ""
+                st.markdown(safe_markdown(f"{mark}**{s['title']}**, {s['location']}"))
+                st.caption(safe_markdown(s["snippet"][:200] + "..."))
+
+        if web:
+            st.markdown("**🌐 From the web**")
+            for s in web:
+                mark = "✅ " if s.get("cited") else ""
+                st.markdown(safe_markdown(f"{mark}[{s['title']}]({s['location']})"))
+                st.caption(safe_markdown(s["snippet"][:200] + "..."))
+
+
 def render_steps(steps: list[dict]) -> None:
     """Show which tools the agent used and what they returned."""
     tools_used = []
@@ -35,7 +67,7 @@ def render_steps(steps: list[dict]) -> None:
         st.caption("Answered without searching.")
         return
 
-    st.caption("Sources used: " + "  ·  ".join(TOOL_LABELS.get(t, t) for t in tools_used))
+    st.caption("Tools used: " + "  ·  ".join(TOOL_LABELS.get(t, t) for t in tools_used))
     with st.expander("Agent steps"):
         for step in steps:
             label = TOOL_LABELS.get(step["tool"], step["tool"])
@@ -50,8 +82,6 @@ def render_steps(steps: list[dict]) -> None:
 # --- Session state setup ---
 if "messages" not in st.session_state:
     st.session_state.messages = []          # chat history = the agent's memory
-if "processed_files" not in st.session_state:
-    st.session_state.processed_files = []   # filenames already added this session
 
 # --- Sidebar ---
 with st.sidebar:
@@ -62,8 +92,12 @@ with st.sidebar:
 
     if st.button("Process documents") and uploaded_files:
         for file in uploaded_files:
-            if file.name in st.session_state.processed_files:
-                st.info(f"{file.name} was already processed.")
+            # Duplicate protection: ask the database, not the session
+            if document_exists(file.name):
+                st.info(
+                    f"{file.name} is already in the knowledge base. "
+                    "Delete it first if you want to re-upload it."
+                )
                 continue
 
             # Save the upload to disk so pypdf can read it
@@ -75,15 +109,35 @@ with st.sidebar:
                 with st.spinner(f"Processing {file.name}..."):
                     chunks = process_pdf(path)
                     add_documents(chunks)
-                st.session_state.processed_files.append(file.name)
                 st.success(f"{file.name}: {len(chunks)} chunks added.")
             except Exception as e:
                 st.error(f"Could not process {file.name}: {e}")
 
-    if st.session_state.processed_files:
-        st.subheader("Added this session")
-        for name in st.session_state.processed_files:
-            st.write(f"• {name}")
+    # --- Knowledge base manager (placed AFTER the upload code, so it shows new files) ---
+    st.divider()
+    st.header("Knowledge base")
+    documents = list_documents()
+
+    if not documents:
+        st.caption("No documents yet. Upload a PDF above.")
+
+    for doc in documents:
+        name_col, delete_col = st.columns([4, 1])
+        name_col.text(f"📄 {doc['name']}\n{doc['chunks']} chunks")
+        if delete_col.button("🗑", key=f"delete_{doc['name']}", help=f"Delete {doc['name']}"):
+            delete_document(doc["name"])
+            saved_file = os.path.join(UPLOAD_DIR, doc["name"])
+            if os.path.exists(saved_file):
+                os.remove(saved_file)
+            st.rerun()
+
+    if documents:
+        confirm = st.checkbox("I want to delete ALL documents")
+        if st.button("Clear knowledge base", disabled=not confirm):
+            clear_knowledge_base()
+            for leftover in os.listdir(UPLOAD_DIR):
+                os.remove(os.path.join(UPLOAD_DIR, leftover))
+            st.rerun()
 
     st.divider()
     st.header("Conversation")
@@ -97,6 +151,7 @@ for msg in st.session_state.messages:
     with st.chat_message(msg["role"]):
         st.markdown(safe_markdown(msg["content"]))
         if msg["role"] == "assistant":
+            render_sources(msg.get("sources", []))
             render_steps(msg.get("steps", []))
 
 # --- Chat input ---
@@ -112,13 +167,14 @@ if question := st.chat_input("Ask about your documents, or anything else"):
 
     # 3. Ask the agent, giving it the history
     with st.chat_message("assistant"):
-        steps = []
-        failed = False
+        answer, steps, sources, failed = "", [], [], False
         try:
             with st.spinner("Thinking..."):
-                answer, steps = run_agent(question, history)
+                result = run_agent(question, history)
+            answer, steps, sources = result.answer, result.steps, result.sources
             st.markdown(safe_markdown(answer))
-            render_steps(steps)
+            render_sources(sources)
+            # render_steps(steps)
         except Exception as e:
             answer = f"Something went wrong: {e}"
             failed = True
@@ -126,5 +182,11 @@ if question := st.chat_input("Ask about your documents, or anything else"):
             st.error(answer)
 
     st.session_state.messages.append(
-        {"role": "assistant", "content": answer, "steps": steps, "error": failed}
+        {
+            "role": "assistant",
+            "content": answer,
+            "steps": steps,
+            "sources": sources,
+            "error": failed,
+        }
     )
