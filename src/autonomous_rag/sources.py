@@ -2,13 +2,14 @@
 from urllib.parse import urlparse
 
 
-def document_source(filename: str, page, snippet: str) -> dict:
+def document_source(filename: str, page, snippet: str, score: float | None = None) -> dict:
     """A passage retrieved from one of the user's uploaded documents."""
     return {
         "type": "document",
         "title": filename,
         "location": f"page {page}",
         "snippet": snippet[:300],
+        "score": None if score is None else round(float(score), 3),
     }
 
 

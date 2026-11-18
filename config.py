@@ -18,7 +18,7 @@ CHUNK_OVERLAP = 150    # characters shared between neighbouring chunks
 
 # --- Retrieval ---
 TOP_K = 3              # how many chunks to retrieve per question
-MAX_DISTANCE = None 
+MAX_DISTANCE = 0.750 
 
 # --- Paths ---
 UPLOAD_DIR = "data/uploads"
