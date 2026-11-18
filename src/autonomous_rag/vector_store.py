@@ -4,9 +4,12 @@ from functools import lru_cache
 from langchain_chroma import Chroma
 from langchain_core.documents import Document
 
-from config import CHROMA_DIR, COLLECTION_NAME, TOP_K
+from config import CHROMA_DIR, COLLECTION_NAME, EMBED_BATCH_SIZE, TOP_K
 from autonomous_rag.embeddings import get_embeddings
+from autonomous_rag.logger import get_logger
+from autonomous_rag.utils import with_retry
 
+logger = get_logger("vector_store")
 #This Python file is all about creating a function for creating a vector database locally
 #Add documents to that vector database. 
 #Creating a function to return top chunks 
@@ -21,16 +24,33 @@ def get_vector_store() -> Chroma:
     )
 
 
-def add_documents(chunks: list[Document]) -> None:
-    """Embed chunks and store them in ChromaDB."""
+def add_documents(chunks: list[Document], progress_callback=None) -> None:
+    """Embed chunks and store them in ChromaDB, one batch at a time.
+
+    progress_callback(done, total) is called after each batch (used for a progress bar).
+    """
     if not chunks:
         return
-    get_vector_store().add_documents(chunks)
+
+    store = get_vector_store()
+    total = len(chunks)
+    for start in range(0, total, EMBED_BATCH_SIZE):
+        batch = chunks[start:start + EMBED_BATCH_SIZE]
+        with_retry(store.add_documents, batch)   # retries rate limits and timeouts
+        if progress_callback:
+            progress_callback(min(start + EMBED_BATCH_SIZE, total), total)
+
+    logger.info("Added %d chunks", total)
+
+
+def search_with_scores(query: str, k: int = TOP_K) -> list[tuple[Document, float]]:
+    """Return (chunk, distance) pairs. LOWER distance = more similar."""
+    return with_retry(get_vector_store().similarity_search_with_score, query, k=k)
 
 
 def search(query: str, k: int = TOP_K) -> list[Document]:
-    """Return the k chunks most similar to the query."""
-    return get_vector_store().similarity_search(query, k=k)
+    """Return the k chunks most similar to the query (without scores)."""
+    return [doc for doc, _distance in search_with_scores(query, k=k)]
 
 def list_documents() -> list[dict]:
     """Return [{'name': 'sample.pdf', 'chunks': 12}, ...] for everything stored."""
