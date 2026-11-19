@@ -27,7 +27,7 @@ COLLECTION_NAME = "knowledge_base"
 
 # --- Agent ---
 MAX_WEB_RESULTS = 3          # how many web results Tavily returns
-AGENT_RECURSION_LIMIT = 10   # NEW: safety cap on agent loop steps
+AGENT_RECURSION_LIMIT = 10   # safety cap on agent loop steps
 
 
 GROQ_FALLBACK_MODEL = "allam-2-7b"      # used if the primary writes a bad tool call
@@ -57,6 +57,26 @@ MAX_EVIDENCE_CHARS = 6000     # cap on evidence sent to the LLM per source type
 
 # --- Grounding (V6) ---
 ENABLE_VERIFICATION = True    # extra LLM check that the answer is supported by the evidence
+
+# --- Retrieval / web (smaller = fewer tokens) ---
+MAX_WEB_RESULTS = 3
+MAX_WEB_CHARS = 600           # NEW: max characters kept from each web result
+MAX_EVIDENCE_CHARS = 4000     # was 6000: cap per source type sent to the LLM
+
+# --- Memory (history is sent with every answer, so keep it small) ---
+MAX_HISTORY_MESSAGES = 6      # was 10
+MAX_HISTORY_CHARS = 3000      # was 6000
+MAX_MESSAGE_CHARS = 800       # was 1500
+
+# --- Speed and cost (V7) ---
+ROUTER_MODEL = ""             # "" = use GROQ_MODEL. A small, fast model from your list is better here.
+ROUTER_MAX_TOKENS = 200       # the router only writes a tiny JSON object
+ROUTER_HISTORY_MESSAGES = 3
+ROUTER_REASONING_EFFORT = None   # e.g. "none"; ONLY set after testing (Section 11)
+ANSWER_REASONING_EFFORT = None   # e.g. "low";  ONLY set after testing (Section 11)
+
+# --- Grounding (V7) ---
+VERIFY_MODE = "off"           # "off" = no extra LLM check, "after" = check AFTER the answer is shown
 
 
 def check_environment() -> tuple[list[str], list[str]]:

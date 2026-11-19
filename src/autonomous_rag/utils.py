@@ -39,14 +39,74 @@ def format_history(history: list[dict], limit: int = 4, chars: int = 300) -> str
 
 
 class Usage:
-    """Adds up token usage across all LLM calls in one turn (best effort)."""
+    """Token usage for ONE node. Used to see where tokens go."""
 
     def __init__(self) -> None:
-        self.total_tokens = 0
+        self.input_tokens = 0
+        self.output_tokens = 0
 
     def add(self, message) -> None:
         meta = getattr(message, "usage_metadata", None) or {}
-        self.total_tokens += meta.get("total_tokens", 0)
+        self.input_tokens += meta.get("input_tokens", 0)
+        self.output_tokens += meta.get("output_tokens", 0)
+
+    @property
+    def total_tokens(self) -> int:
+        return self.input_tokens + self.output_tokens
+
+    def as_dict(self) -> dict:
+        return {"input": self.input_tokens, "output": self.output_tokens}
+
+
+def _partial_length(buffer: str, tag: str) -> int:
+    """How many characters at the end of buffer could be the START of tag?"""
+    for size in range(min(len(tag) - 1, len(buffer)), 0, -1):
+        if tag.startswith(buffer[-size:]):
+            return size
+    return 0
+
+
+class ThinkFilter:
+    """Hide <think>...</think> blocks in a stream of text pieces.
+
+    A tag can arrive split across pieces ("<thi" + "nk>"), so we hold back
+    anything that might be the start of a tag until we know.
+    """
+
+    OPEN, CLOSE = "<think>", "</think>"
+
+    def __init__(self) -> None:
+        self.inside = False
+        self.buffer = ""
+
+    def feed(self, piece: str) -> str:
+        self.buffer += piece
+        out = ""
+        while True:
+            if self.inside:
+                end = self.buffer.find(self.CLOSE)
+                if end == -1:
+                    self.buffer = self.buffer[-(len(self.CLOSE) - 1):]
+                    return out
+                self.buffer = self.buffer[end + len(self.CLOSE):]
+                self.inside = False
+            else:
+                start = self.buffer.find(self.OPEN)
+                if start == -1:
+                    keep = _partial_length(self.buffer, self.OPEN)
+                    cut = len(self.buffer) - keep
+                    out += self.buffer[:cut]
+                    self.buffer = self.buffer[cut:]
+                    return out
+                out += self.buffer[:start]
+                self.buffer = self.buffer[start + len(self.OPEN):]
+                self.inside = True
+
+    def flush(self) -> str:
+        """Call at the end of the stream to release anything still held back."""
+        out = "" if self.inside else self.buffer
+        self.buffer = ""
+        return out
 
 
 def with_retry(func, *args, **kwargs):

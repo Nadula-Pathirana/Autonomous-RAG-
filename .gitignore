@@ -21,4 +21,6 @@ workflow.png
 
 traces_1h.json
 
+.pytest_cache
+.streamlit
 
