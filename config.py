@@ -69,14 +69,14 @@ MAX_HISTORY_CHARS = 3000      # was 6000
 MAX_MESSAGE_CHARS = 800       # was 1500
 
 # --- Speed and cost (V7) ---
-ROUTER_MODEL = ""             # "" = use GROQ_MODEL. A small, fast model from your list is better here.
+ROUTER_MODEL = "qwen/qwen3.8-27b"             # "" = use GROQ_MODEL. A small, fast model from your list is better here.
 ROUTER_MAX_TOKENS = 200       # the router only writes a tiny JSON object
 ROUTER_HISTORY_MESSAGES = 3
 ROUTER_REASONING_EFFORT = None   # e.g. "none"; ONLY set after testing (Section 11)
-ANSWER_REASONING_EFFORT = None   # e.g. "low";  ONLY set after testing (Section 11)
+ANSWER_REASONING_EFFORT = "medium"   # e.g. "low";  ONLY set after testing (Section 11)
 
 # --- Grounding (V7) ---
-VERIFY_MODE = "off"           # "off" = no extra LLM check, "after" = check AFTER the answer is shown
+VERIFY_MODE = "after"           # "off" = no extra LLM check, "after" = check AFTER the answer is shown
 
 
 def check_environment() -> tuple[list[str], list[str]]:

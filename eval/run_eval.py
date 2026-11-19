@@ -111,6 +111,24 @@ def rate(rows: list[dict], key: str) -> str:
     return f"{sum(values)}/{len(values)}" if values else "n/a"
 
 
+def node_averages(rows: list[dict]) -> list[str]:
+    seconds, tokens = {}, {}
+    for r in rows:
+        if r["status"] == "ERROR":
+            continue
+        for node, value in r["timings"].items():
+            if node not in ("first_token_at", "total"):
+                seconds.setdefault(node, []).append(value)
+        for node, u in r["usage"].items():
+            tokens.setdefault(node, []).append(u["input"] + u["output"])
+    lines = []
+    for node in sorted(seconds):
+        s, t = seconds[node], tokens.get(node)
+        token_part = f", {sum(t) / len(t):.0f} tokens" if t else ""
+        lines.append(f"- {node}: {sum(s) / len(s):.2f}s avg over {len(s)} runs{token_part}")
+    return lines
+
+
 def main() -> None:
     cases = json.loads(QUESTIONS_FILE.read_text(encoding="utf-8"))
     console = Console()
@@ -118,29 +136,32 @@ def main() -> None:
 
     for case in cases:
         console.print(f"[dim]Running:[/dim] {case['id']} ...")
-        started = time.perf_counter()
         try:
-            result = run_agent(case["question"])   # each question is independent (no history)
+            started = time.perf_counter()
+            result = run_agent(case["question"])          # each question is independent
+            agent_seconds = time.perf_counter() - started  # the judge below is NOT timed
             grades = grade(case, result)
             passed = all(v for v in grades.values() if v is not None)
             rows.append({
                 "id": case["id"], "status": "PASS" if passed else "FAIL", "grades": grades,
                 "used": ", ".join(sorted(tools_used(result))) or "-", "route": result.route,
-                "seconds": time.perf_counter() - started, "tokens": result.tokens, "note": "",
+                "seconds": agent_seconds, "ttft": result.timings.get("first_token_at", 0),
+                "timings": result.timings, "usage": result.usage,
+                "tokens": result.tokens, "note": "",
             })
         except Exception as error:
             # Infrastructure problem (model 404, rate limit...). NOT a RAG failure.
             rows.append({
                 "id": case["id"], "status": "ERROR", "grades": {}, "used": "-", "route": "-",
-                "seconds": time.perf_counter() - started, "tokens": 0, "note": str(error)[:80],
+                "seconds": 0.0, "ttft": 0, "timings": {}, "usage": {}, "tokens": 0,
+                "note": str(error)[:80],
             })
         time.sleep(PAUSE_SECONDS)
 
     graded = [r for r in rows if r["status"] != "ERROR"]
     passed_count = sum(r["status"] == "PASS" for r in rows)
     errors = len(rows) - len(graded)
-    avg_seconds = sum(r["seconds"] for r in graded) / max(len(graded), 1)
-    avg_tokens = sum(r["tokens"] for r in graded) / max(len(graded), 1)
+    n = max(len(graded), 1)
     stamp = f"{datetime.now():%Y-%m-%d %H:%M}"
 
     summary = [
@@ -148,17 +169,22 @@ def main() -> None:
         f"Tool selection {rate(rows, 'tool')} | Retrieval recall {rate(rows, 'retrieval')} | "
         f"Citation {rate(rows, 'citation')} | Abstention {rate(rows, 'abstain')} | "
         f"Faithfulness {rate(rows, 'faithful')} | Relevance {rate(rows, 'relevant')}",
-        f"Avg latency {avg_seconds:.1f}s | Avg tokens {avg_tokens:.0f}",
+        f"Avg time to first word {sum(r['ttft'] for r in graded) / n:.1f}s | "
+        f"Avg total {sum(r['seconds'] for r in graded) / n:.1f}s (judge not included) | "
+        f"Avg tokens {sum(r['tokens'] for r in graded) / n:.0f} (judge not included)",
+        "",
+        "Per node:",
+        *node_averages(rows),
     ]
     columns = ["Question", "Status", "Tools", "Tool", "Retrieval", "Content", "Citation",
-               "Abstain", "Faithful", "Relevant", "Sec", "Tokens", "Note"]
+               "Abstain", "Faithful", "Relevant", "First word", "Total", "Tokens", "Note"]
 
     def row_cells(r):
         g = r["grades"]
         return [r["id"], r["status"], r["used"]] + [
             mark(g.get(k)) if g else "-"
             for k in ("tool", "retrieval", "content", "citation", "abstain", "faithful", "relevant")
-        ] + [f"{r['seconds']:.1f}", str(r["tokens"]), r["note"]]
+        ] + [f"{r['ttft']:.1f}", f"{r['seconds']:.1f}", str(r["tokens"]), r["note"]]
 
     # 1. Markdown report
     lines = [f"# Evaluation run {stamp}", "",

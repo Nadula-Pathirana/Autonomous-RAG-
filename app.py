@@ -1,6 +1,6 @@
 import os
 from pathlib import Path
-
+import time
 import streamlit as st
 
 from config import (
@@ -103,6 +103,10 @@ def render_steps(steps: list[dict], show_details: bool) -> None:
                     st.markdown(f"**⬅️ Result from** {label}")
                     st.text(step["output"][:1500])
 
+def render_warnings(warnings: list[str]) -> None:
+    for warning in warnings:
+        st.caption(f"⚠️ {warning}")
+
 
 def discard_upload(name: str, path: str) -> None:
     """Clean up after a failed upload: remove the saved file and any partial chunks."""
@@ -155,24 +159,27 @@ def ingest_file(file) -> None:
 
 
 def answer_with_streaming(placeholder, question: str, history: list[dict]):
-    """Show the answer as it is written. Returns the final AgentResult."""
-    text = ""
-    result = None
+    """Show the answer token by token. Returns the final AgentResult."""
+    text, result, last_draw = "", None, 0.0
     placeholder.markdown("_Thinking..._")
 
     for event in stream_agent(question, history):
         kind = event["event"]
         if kind == "token":
             text += event["text"]
-            placeholder.markdown(safe_markdown(text) + "▌")
+            now = time.monotonic()
+            if now - last_draw >= 0.03:                      # redraw at most ~30x per second
+                placeholder.markdown(safe_markdown(text) + "▌")
+                last_draw = now
         elif kind == "tool":
             label = TOOL_LABELS.get(event["name"], event["name"])
-            placeholder.markdown(f"_Searching: {label}..._")
-        elif kind == "status":                                   
-            placeholder.markdown(f"_{event['text']}_")
-        elif kind == "reset":
-            text = ""
-            placeholder.markdown("_Thinking..._")
+            if not text:
+                placeholder.markdown(f"_Searching: {label}..._")
+        elif kind == "status":
+            if text:
+                placeholder.markdown(safe_markdown(text) + f"\n\n_{event['text']}_")
+            else:
+                placeholder.markdown(f"_{event['text']}_")
         elif kind == "done":
             result = event["result"]
     return result
@@ -241,6 +248,7 @@ for msg in st.session_state.messages:
         if msg["role"] == "assistant" and not msg.get("error"):
             render_sources(msg.get("sources", []))
             render_steps(msg.get("steps", []), show_steps)
+            render_warnings(msg.get("warnings", []))       
 
 # --- Chat input ---
 question = st.chat_input(
@@ -265,7 +273,7 @@ if question:
     # 3. Ask the agent, giving it the history
     with st.chat_message("assistant"):
         placeholder = st.empty()
-        answer, steps, sources, failed = "", [], [], False
+        answer, steps, sources, warnings, failed = "", [], [], [], False  
         try:
             if ENABLE_STREAMING:
                 result = answer_with_streaming(placeholder, question, history)
@@ -273,9 +281,11 @@ if question:
                 with st.spinner("Thinking..."):
                     result = run_agent(question, history)
             answer, steps, sources = result.answer, result.steps, result.sources
+            warnings = result.warnings                                         # NEW
             placeholder.markdown(safe_markdown(answer))
             render_sources(sources)
             render_steps(steps, show_steps)
+            render_warnings(warnings)       
         except Exception as error:
             logger.exception("Agent failed | question=%r", question[:80])
             answer = friendly_error(error)
