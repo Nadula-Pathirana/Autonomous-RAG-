@@ -1,5 +1,6 @@
 # pyrefly: ignore[missing-import]
 from urllib.parse import urlparse
+import re
 
 
 def document_source(filename: str, page, snippet: str, score: float | None = None) -> dict:
@@ -36,10 +37,10 @@ def dedupe_sources(sources: list[dict]) -> list[dict]:
 
 
 def mark_cited(sources: list[dict], answer: str) -> list[dict]:
-    """Add a 'cited' flag: did the answer actually mention this source?
+    """Add a 'cited' flag: did the answer actually cite this source?
 
-    Documents count as cited if the file name appears in the answer.
-    Web results count as cited if the site's domain appears in the answer.
+    Web results: the site's domain appears in the answer.
+    Documents: the file name AND the page appear together, e.g. [sample.pdf, p.2].
     """
     lowered = answer.lower()
     for source in sources:
@@ -47,5 +48,8 @@ def mark_cited(sources: list[dict], answer: str) -> list[dict]:
             domain = urlparse(source["location"]).netloc.lower()
             source["cited"] = bool(domain) and domain in lowered
         else:
-            source["cited"] = source["title"].lower() in lowered
+            title = re.escape(source["title"].lower())
+            page = re.escape(source["location"].removeprefix("page ").strip())
+            pattern = rf"{title}[^\]\n]{{0,25}}?\bp(?:p|age)?\.?\s*{page}\b"
+            source["cited"] = re.search(pattern, lowered) is not None
     return sources
