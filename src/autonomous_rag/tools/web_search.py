@@ -13,16 +13,8 @@ from autonomous_rag.utils import with_retry
 logger = get_logger("tools.web")
 
 
-@tool(response_format="content_and_artifact")
-def search_web(query: str) -> tuple[str, list[dict]]:
-    """Search the INTERNET for current or external information.
-
-    Use this tool for recent news, up-to-date facts, prices, public
-    information about companies or people, or anything that is unlikely to
-    be in the user's uploaded documents. The query must be a complete,
-    standalone search phrase that names the topic. Never use pronouns such as
-    "it" or "that".
-    """
+def run_web_search(query: str) -> tuple[str, list[dict]]:
+    """Search the web. Returns (text for the LLM, structured sources)."""
     if not TAVILY_API_KEY:
         return "Web search is unavailable: TAVILY_API_KEY is not set.", []
 
@@ -44,8 +36,13 @@ def search_web(query: str) -> tuple[str, list[dict]]:
         title = r.get("title") or "Untitled"
         url = r.get("url", "")
         content = r.get("content", "")
-        # The heading is a ready-made markdown link the agent can copy
         parts.append(f"[{title}]({url})\n{content}")
         sources.append(web_source(title, url, content))
 
     return "\n\n".join(parts), sources
+
+
+@tool(response_format="content_and_artifact")
+def search_web(query: str) -> tuple[str, list[dict]]:
+    """Search the INTERNET for current or external information."""
+    return run_web_search(query)

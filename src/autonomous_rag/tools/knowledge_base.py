@@ -11,16 +11,8 @@ from autonomous_rag.vector_store import search_with_scores
 logger = get_logger("tools.kb")
 
 
-@tool(response_format="content_and_artifact")
-def search_knowledge_base(query: str) -> tuple[str, list[dict]]:
-    """Search the user's UPLOADED DOCUMENTS (PDFs) for relevant passages.
-
-    Use this tool when the question is about the content of the user's own
-    files, company documents, reports, or anything that might be in the
-    documents they uploaded. The query must be a complete, standalone search
-    phrase that names the topic (for example "AetherTech price match
-    guarantee exclusions"). Never use pronouns such as "it" or "that".
-    """
+def run_kb_search(query: str) -> tuple[str, list[dict]]:
+    """Search the knowledge base. Returns (text for the LLM, structured sources)."""
     started = time.perf_counter()
     try:
         results = search_with_scores(query)
@@ -55,8 +47,13 @@ def search_knowledge_base(query: str) -> tuple[str, list[dict]]:
     for doc, distance in kept:
         filename = doc.metadata.get("source", "unknown")
         page = doc.metadata.get("page", "?")
-        # The heading is exactly the citation format the agent should copy
         parts.append(f"[{filename}, p.{page}]\n{doc.page_content}")
         sources.append(document_source(filename, page, doc.page_content, distance))
 
     return "\n\n".join(parts), sources
+
+
+@tool(response_format="content_and_artifact")
+def search_knowledge_base(query: str) -> tuple[str, list[dict]]:
+    """Search the user's UPLOADED DOCUMENTS (PDFs) for relevant passages."""
+    return run_kb_search(query)
