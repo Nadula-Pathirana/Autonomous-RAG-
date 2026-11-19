@@ -168,6 +168,8 @@ def answer_with_streaming(placeholder, question: str, history: list[dict]):
         elif kind == "tool":
             label = TOOL_LABELS.get(event["name"], event["name"])
             placeholder.markdown(f"_Searching: {label}..._")
+        elif kind == "status":                                   
+            placeholder.markdown(f"_{event['text']}_")
         elif kind == "reset":
             text = ""
             placeholder.markdown("_Thinking..._")
