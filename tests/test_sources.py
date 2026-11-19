@@ -28,3 +28,12 @@ def test_web_source_cited_by_domain():
 
 def test_score_is_rounded():
     assert document_source("a.pdf", 1, "x", 0.123456)["score"] == 0.123
+
+def test_document_not_cited_when_page_differs():
+    sources = mark_cited([document_source("sample.pdf", 3, "x")], "See [sample.pdf, p.2].")
+    assert sources[0]["cited"] is False
+
+
+def test_page_12_is_not_matched_by_page_1():
+    sources = mark_cited([document_source("sample.pdf", 1, "x")], "See [sample.pdf, p.12].")
+    assert sources[0]["cited"] is False
