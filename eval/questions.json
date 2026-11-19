@@ -259,7 +259,8 @@
             "not mentioned",
             "not found"
         ],
-        "expect_citation": false
+        "expect_citation": false,
+        "expect_abstain": true
     },
     {
         "id": "not-in-documents-kb104",
@@ -273,7 +274,8 @@
             "not mentioned",
             "not found"
         ],
-        "expect_citation": false
+        "expect_citation": false,
+        "expect_abstain": true
     },
     {
         "id": "not-in-documents-support-hours",
@@ -287,7 +289,8 @@
             "not mentioned",
             "not found"
         ],
-        "expect_citation": false
+        "expect_citation": false,
+        "expect_abstain": true
     },
     {
         "id": "edge-vague-kb-first",
