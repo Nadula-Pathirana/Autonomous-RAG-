@@ -1,206 +1,174 @@
 import time
 from dataclasses import dataclass, field
 from datetime import date
-from functools import lru_cache
 
-from langchain.agents import create_agent
-from langchain_core.messages import AIMessage, AIMessageChunk, ToolMessage
-from langgraph.errors import GraphRecursionError
-
-from config import AGENT_RECURSION_LIMIT, GROQ_FALLBACK_MODEL, GROQ_MODEL
-from autonomous_rag.llm import get_llm
+from config import ENABLE_VERIFICATION, MAX_EVIDENCE_CHARS
+from autonomous_rag.llm import invoke_llm, stream_llm
 from autonomous_rag.logger import get_logger
-from autonomous_rag.prompts import SYSTEM_PROMPT
+from autonomous_rag.prompts import REWRITE_PROMPT, SYSTEM_PROMPT, VERIFY_PROMPT
+from autonomous_rag.router import RouteDecision, route_question
 from autonomous_rag.sources import dedupe_sources, mark_cited
-from autonomous_rag.tools import ALL_TOOLS
+from autonomous_rag.tools.knowledge_base import run_kb_search
+from autonomous_rag.tools.web_search import run_web_search
+from autonomous_rag.utils import Usage, as_text, extract_json, format_history, strip_think
 
 logger = get_logger("agent")
 
-LOOP_MESSAGE = (
-    "I got stuck in a loop while researching this. "
-    "Try rephrasing or asking a simpler question."
-)
+TOOL_KB = "search_knowledge_base"   # names the UI already knows
+TOOL_WEB = "search_web"
 
 
 @dataclass
 class AgentResult:
-    """Everything the UI needs from one agent run."""
+    """Everything the UI and the eval need from one run."""
 
     answer: str
     steps: list[dict] = field(default_factory=list)
     sources: list[dict] = field(default_factory=list)
+    route: str = ""
+    tokens: int = 0
 
 
-@lru_cache(maxsize=4)
-def get_agent(today: str, model_name: str = GROQ_MODEL):
-    """Build the agent. Cached per date and model."""
-    return create_agent(
-        model=get_llm(model_name),
-        tools=ALL_TOOLS,
-        system_prompt=SYSTEM_PROMPT.format(today=today),
+# ---------- retrieval (done by code, not by the LLM) ----------
+
+def _plan(decision: RouteDecision) -> list[tuple]:
+    """Which searches to run: [(tool_name, query, function), ...]."""
+    plan = []
+    if decision.route in ("KB_ONLY", "BOTH"):
+        plan.append((TOOL_KB, decision.kb_query, run_kb_search))
+    if decision.route in ("WEB_ONLY", "BOTH"):
+        plan.append((TOOL_WEB, decision.web_query, run_web_search))
+    return plan
+
+
+def _execute(tool_name, query, func, steps, sources, blocks) -> None:
+    steps.append({"type": "call", "tool": tool_name, "input": {"query": query}})
+    text, found = func(query)
+    steps.append({"type": "result", "tool": tool_name, "output": text})
+    sources.extend(found)
+    blocks.append((tool_name, text))
+
+
+def _evidence_text(blocks: list[tuple]) -> str:
+    parts = []
+    for tool_name, text in blocks:
+        title = (
+            "DOCUMENT RESULTS (the user's uploaded files)"
+            if tool_name == TOOL_KB
+            else "WEB RESULTS (the internet)"
+        )
+        parts.append(f"=== {title} ===\n{text[:MAX_EVIDENCE_CHARS]}")
+    return "\n\n".join(parts)
+
+
+# ---------- answering ----------
+
+def _build_messages(question: str, history: list[dict], evidence: str) -> list[dict]:
+    system = SYSTEM_PROMPT.format(today=date.today().isoformat())
+    user = f"{evidence}\n\n=== QUESTION ===\n{question}" if evidence else question
+    return [{"role": "system", "content": system}, *history, {"role": "user", "content": user}]
+
+
+def _verify(answer: str, evidence: str, history: list[dict], usage: Usage) -> list[str]:
+    """Return the claims in the answer that the evidence does NOT support."""
+    prompt = VERIFY_PROMPT.format(
+        evidence=evidence, history=format_history(history, limit=6, chars=500), answer=answer
     )
+    try:
+        response = invoke_llm([{"role": "user", "content": prompt}], usage)
+        claims = extract_json(as_text(response.content)).get("unsupported_claims") or []
+    except Exception:
+        logger.warning("verification failed; keeping the draft answer", exc_info=True)
+        return []
+    return [str(claim) for claim in claims if str(claim).strip()]
 
 
-def _as_text(content) -> str:
-    """Message content is usually a string, but can be a list of blocks."""
-    if isinstance(content, str):
-        return content
-    return "".join(
-        block.get("text", "") if isinstance(block, dict) else str(block)
-        for block in content
+def _finalize(draft: str, evidence: str, history: list[dict], usage: Usage) -> str:
+    """Check the draft against the evidence and fix it if needed."""
+    if not (ENABLE_VERIFICATION and evidence):
+        return draft
+    claims = _verify(draft, evidence, history, usage)
+    if not claims:
+        return draft
+
+    logger.warning("unsupported claims removed: %s", claims)
+    prompt = REWRITE_PROMPT.format(
+        evidence=evidence, answer=draft, claims="\n".join(f"- {c}" for c in claims)
     )
+    try:
+        response = invoke_llm([{"role": "user", "content": prompt}], usage)
+        return strip_think(as_text(response.content)) or draft
+    except Exception:
+        logger.warning("rewrite failed; keeping the draft answer", exc_info=True)
+        return draft
 
 
-def _extract_steps(messages: list) -> list[dict]:
-    """Pull out which tools the agent called, with what input and what came back."""
-    steps = []
-    for message in messages:
-        if isinstance(message, AIMessage) and message.tool_calls:
-            for call in message.tool_calls:
-                steps.append(
-                    {"type": "call", "tool": call["name"], "input": call["args"]}
-                )
-        elif isinstance(message, ToolMessage):
-            steps.append(
-                {
-                    "type": "result",
-                    "tool": message.name,
-                    "output": _as_text(message.content),
-                }
-            )
-    return steps
-
-
-def _extract_sources(messages: list, answer: str) -> list[dict]:
-    """Collect the structured sources attached to this turn's tool results."""
-    sources = []
-    for message in messages:
-        if isinstance(message, ToolMessage) and isinstance(message.artifact, list):
-            sources.extend(message.artifact)
-    return mark_cited(dedupe_sources(sources), answer)
-
-
-def _models_to_try() -> list[str]:
-    """Primary model first, then the fallback (skipping duplicates)."""
-    return list(dict.fromkeys([GROQ_MODEL, GROQ_FALLBACK_MODEL]))
-
-
-def _build_result(new_messages: list, model_name: str, started: float) -> AgentResult:
-    """Turn this turn's messages into an AgentResult, and log a summary."""
-    answer = _as_text(new_messages[-1].content)
-    steps = _extract_steps(new_messages)
-    sources = _extract_sources(new_messages, answer)
+def _result(answer, steps, sources, decision, usage, started) -> AgentResult:
+    sources = mark_cited(dedupe_sources(sources), answer)
     logger.info(
-        "turn done | model=%s | tools=%s | sources=%d | answer_chars=%d | %.2fs",
-        model_name,
-        [s["tool"] for s in steps if s["type"] == "call"],
-        len(sources),
-        len(answer),
-        time.perf_counter() - started,
+        "turn done | route=%s | tools=%s | sources=%d | tokens=%d | %.2fs",
+        decision.route, [s["tool"] for s in steps if s["type"] == "call"],
+        len(sources), usage.total_tokens, time.perf_counter() - started,
     )
-    return AgentResult(answer=answer, steps=steps, sources=sources)
+    return AgentResult(
+        answer=answer, steps=steps, sources=sources,
+        route=decision.route, tokens=usage.total_tokens,
+    )
+
 
 
 def run_agent(question: str, history: list[dict] | None = None) -> AgentResult:
-    """Run the agent and return the finished result (no streaming)."""
-    input_messages = (history or []) + [{"role": "user", "content": question}]
-    today = date.today().isoformat()
-    started = time.perf_counter()
-    logger.info("turn start | history=%d | question=%r", len(history or []), question[:80])
-    last_error = None
+    """Run one turn and return the finished result (no streaming)."""
+    history = history or []
+    started, usage = time.perf_counter(), Usage()
+    logger.info("turn start | history=%d | question=%r", len(history), question[:80])
 
-    for model_name in _models_to_try():
-        agent = get_agent(today, model_name)
-        try:
-            result = agent.invoke(
-                {"messages": input_messages},
-                config={"recursion_limit": AGENT_RECURSION_LIMIT},
-            )
-        except GraphRecursionError:
-            logger.warning("recursion limit reached | question=%r", question[:80])
-            return AgentResult(answer=LOOP_MESSAGE)
-        except Exception as error:
-            if "tool_use_failed" in str(error):
-                logger.warning("tool_use_failed with %s, trying the fallback", model_name)
-                last_error = error
-                continue
-            raise
+    decision = route_question(question, history, usage)
+    steps, sources, blocks = [], [], []
+    for tool_name, query, func in _plan(decision):
+        _execute(tool_name, query, func, steps, sources, blocks)
 
-        # Keep only the messages created during THIS turn
-        new_messages = result["messages"][len(input_messages):]
-        return _build_result(new_messages, model_name, started)
-
-    # pyrefly: ignore[bad-raise]
-    raise last_error
+    evidence = _evidence_text(blocks)
+    response = invoke_llm(_build_messages(question, history, evidence), usage)
+    answer = _finalize(strip_think(as_text(response.content)), evidence, history, usage)
+    return _result(answer, steps, sources, decision, usage, started)
 
 
 def stream_agent(question: str, history: list[dict] | None = None):
-    """Run the agent and yield events while it works.
+    """Run one turn and yield events while it works.
 
-    Events (dictionaries):
-      {"event": "token", "text": "..."}   a piece of the answer
-      {"event": "tool",  "name": "..."}   the agent is calling a tool
-      {"event": "reset"}                  discard text shown so far
-      {"event": "done",  "result": AgentResult}   always the last event
+    Events:
+      {"event": "status", "text": "..."}   progress message
+      {"event": "tool",   "name": "..."}   a search is starting
+      {"event": "token",  "text": "..."}   a piece of the answer
+      {"event": "done",   "result": AgentResult}   always last
     """
-    input_messages = (history or []) + [{"role": "user", "content": question}]
-    today = date.today().isoformat()
-    started = time.perf_counter()
-    logger.info("turn start (stream) | history=%d | question=%r", len(history or []), question[:80])
-    last_error = None
+    history = history or []
+    started, usage = time.perf_counter(), Usage()
+    logger.info("turn start (stream) | history=%d | question=%r", len(history), question[:80])
 
-    for model_name in _models_to_try():
-        agent = get_agent(today, model_name)
-        final_state = None
-        announced = set()   # message ids we already announced a tool call for
+    yield {"event": "status", "text": "Choosing where to look..."}
+    decision = route_question(question, history, usage)
 
-        try:
-            for mode, data in agent.stream(
-                {"messages": input_messages},
-                config={"recursion_limit": AGENT_RECURSION_LIMIT},
-                stream_mode=["messages", "values"],
-            ):
-                if mode == "values":
-                    final_state = data          # the full state after each step
-                    continue
+    steps, sources, blocks = [], [], []
+    for tool_name, query, func in _plan(decision):
+        yield {"event": "tool", "name": tool_name}
+        _execute(tool_name, query, func, steps, sources, blocks)
 
-                chunk, _metadata = data         # mode == "messages"
-                if not isinstance(chunk, AIMessageChunk):
-                    continue                    # ignore tool outputs
+    evidence = _evidence_text(blocks)
+    messages = _build_messages(question, history, evidence)
 
-                if chunk.tool_call_chunks:
-                    # The model is calling a tool, so any text it wrote just
-                    # before that was not the final answer: throw it away.
-                    if chunk.id not in announced:
-                        announced.add(chunk.id)
-                        yield {"event": "reset"}
-                    name = next(
-                        (c.get("name") for c in chunk.tool_call_chunks if c.get("name")),
-                        None,
-                    )
-                    if name:
-                        yield {"event": "tool", "name": name}
-                elif chunk.content:
-                    yield {"event": "token", "text": _as_text(chunk.content)}
+    if ENABLE_VERIFICATION and evidence:
+        # We must check the answer BEFORE showing it, so this path can't stream word by word.
+        yield {"event": "status", "text": "Writing the answer..."}
+        draft = strip_think(as_text(invoke_llm(messages, usage).content))
+        yield {"event": "status", "text": "Checking the answer against the sources..."}
+        answer = _finalize(draft, evidence, history, usage)
+        yield {"event": "token", "text": answer}
+    else:
+        answer = ""
+        for piece in stream_llm(messages, usage):
+            answer += piece
+            yield {"event": "token", "text": piece}
 
-        except GraphRecursionError:
-            logger.warning("recursion limit reached | question=%r", question[:80])
-            yield {"event": "done", "result": AgentResult(answer=LOOP_MESSAGE)}
-            return
-        except Exception as error:
-            if "tool_use_failed" in str(error):
-                logger.warning("tool_use_failed with %s, trying the fallback", model_name)
-                last_error = error
-                yield {"event": "reset"}
-                continue
-            raise
-
-        if not final_state:
-            raise RuntimeError("The agent finished without producing a result.")
-
-        new_messages = final_state["messages"][len(input_messages):]
-        yield {"event": "done", "result": _build_result(new_messages, model_name, started)}
-        return
-
-    # pyrefly: ignore[bad-raise]
-    raise last_error
+    yield {"event": "done", "result": _result(answer, steps, sources, decision, usage, started)}
