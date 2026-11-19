@@ -1,4 +1,5 @@
 from typing import Literal
+import re
 
 from pydantic import BaseModel
 
@@ -19,37 +20,36 @@ class RouteDecision(BaseModel):
     reason: str = ""
 
 
-ROUTER_PROMPT = """You are the routing step of a research assistant. Decide which sources
-are needed to answer the user's LAST question. Do NOT answer the question.
+GREETING = re.compile(
+    r"^\s*(hi|hello|hey|thanks|thank you|good (morning|afternoon|evening))\b"
+    r"[\s!.,?]*(what can you do\??\s*)?$",
+    re.IGNORECASE,
+)
 
-Routes:
-- KB_ONLY: the question is about the user's uploaded documents, or could plausibly be
-  answered by them (policies, products, procedures, internal facts, error codes, or any
-  vague question that might refer to the documents).
-- WEB_ONLY: needs current events, recent facts, prices, or public information that cannot
-  be in the user's documents.
-- BOTH: needs the documents AND outside information (for example, comparing the user's
-  documents with the outside world).
-- NO_TOOL: ONLY greetings, questions about what you can do, or questions about the
-  conversation itself (summarise it, rephrase a previous answer, "what did I ask?").
+ROUTER_PROMPT = """Route the user's LAST question. Do NOT answer it.
+KB_ONLY: about the user's uploaded documents, or could plausibly be in them (policies,
+  products, procedures, error codes, anything vague).
+WEB_ONLY: needs current or public information that cannot be in the documents.
+BOTH: needs the documents AND outside information.
+NO_TOOL: ONLY greetings, "what can you do?", or questions about the chat itself
+  (summarise, rephrase, "what did I ask?").
+If unsure between NO_TOOL and KB_ONLY, choose KB_ONLY.
+kb_query / web_query: complete standalone search phrases naming the topic. Resolve "it" or
+  "that" from the conversation. Leave empty if unused.
+about_conversation: true only for questions about the chat itself.
 
-Rules:
-- If unsure between NO_TOOL and KB_ONLY, choose KB_ONLY.
-- kb_query and web_query must be complete, standalone search phrases that name the topic.
-  Use the conversation to resolve words like "it", "that", "they". Never use pronouns.
-  Leave a query empty if that source is not used.
-- Set about_conversation to true ONLY if the question is about the chat itself or asks to
-  rephrase a previous answer.
-
-Documents currently uploaded: {documents}
-
-Conversation so far:
+Documents: {documents}
+Conversation:
 {history}
+Question: {question}
 
-Last question: {question}
+Reply with ONE JSON object only:
+{{"route": "KB_ONLY", "kb_query": "...", "web_query": "", "about_conversation": false}}"""
 
-Reply with ONE JSON object and nothing else:
-{{"route": "KB_ONLY", "kb_query": "...", "web_query": "", "about_conversation": false, "reason": "..."}}"""
+
+def is_greeting(question: str) -> bool:
+    return bool(GREETING.match(question))
+
 
 
 def parse_route(text: str) -> RouteDecision:
@@ -89,6 +89,10 @@ def apply_rules(
 
 def route_question(question: str, history: list[dict], usage=None) -> RouteDecision:
     """Decide which sources to use for this question."""
+    if is_greeting(question):                     # no LLM call needed
+        logger.info("route | greeting fast path")
+        return RouteDecision(route="NO_TOOL", about_conversation=True, reason="greeting")
+
     try:
         documents = list_documents()
     except Exception:
@@ -97,15 +101,14 @@ def route_question(question: str, history: list[dict], usage=None) -> RouteDecis
 
     prompt = ROUTER_PROMPT.format(
         documents=", ".join(d["name"] for d in documents) or "(none)",
-        history=format_history(history, limit=ROUTER_HISTORY_MESSAGES),
+        history=format_history(history, limit=ROUTER_HISTORY_MESSAGES, chars=200),
         question=question,
     )
 
     try:
-        response = invoke_llm([{"role": "user", "content": prompt}], usage)
+        response = invoke_llm([{"role": "user", "content": prompt}], usage, role="router")
         decision = parse_route(as_text(response.content))
     except Exception as error:
-        # Router failed: the documents are the safest default.
         logger.warning("router failed (%s). Defaulting to KB_ONLY.", str(error)[:150])
         decision = RouteDecision(route="KB_ONLY", reason="router failed")
 
@@ -124,7 +127,7 @@ def route_question(question: str, history: list[dict], usage=None) -> RouteDecis
         probe_distance=probe,
     )
     logger.info(
-        "route | llm=%s final=%s probe=%s | kb_query=%r web_query=%r | %s",
-        decision.route, final.route, probe, final.kb_query, final.web_query, final.reason[:80],
+        "route | llm=%s final=%s probe=%s | kb_query=%r web_query=%r",
+        decision.route, final.route, probe, final.kb_query, final.web_query,
     )
     return final
