@@ -50,6 +50,14 @@ ENABLE_STREAMING = True       # show the answer as it is written
 LOG_DIR = "logs"
 LOG_LEVEL = "INFO"
 
+# --- Routing (V6) ---
+ROUTER_HISTORY_MESSAGES = 4   # how much conversation the router sees
+PROBE_DISTANCE = 0.60         # "documents clearly match" threshold; tune with scripts/calibrate_retrieval.py
+MAX_EVIDENCE_CHARS = 6000     # cap on evidence sent to the LLM per source type
+
+# --- Grounding (V6) ---
+ENABLE_VERIFICATION = True    # extra LLM check that the answer is supported by the evidence
+
 
 def check_environment() -> tuple[list[str], list[str]]:
     """Return (errors, warnings) about missing configuration."""
@@ -60,4 +68,6 @@ def check_environment() -> tuple[list[str], list[str]]:
         errors.append("GOOGLE_API_KEY is missing. Documents can't be embedded or searched without it.")
     if not TAVILY_API_KEY:
         warnings.append("TAVILY_API_KEY is missing. Web search will be unavailable.")
+    if not GROQ_FALLBACK_MODEL:
+        warnings.append("No fallback model configured (GROQ_FALLBACK_MODEL). Model failures will show errors.")
     return errors, warnings
