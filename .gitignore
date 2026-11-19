@@ -14,3 +14,11 @@ data/uploads/
 
 project_summary.md
 .agents
+
+logs/
+workflow.mmd
+workflow.png
+
+traces_1h.json
+
+

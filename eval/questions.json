@@ -1,0 +1,316 @@
+[
+    {
+        "id": "price-match",
+        "question": "What is the price match guarantee at AetherTech?",
+        "expect_tool": "kb_only",
+        "must_contain": [
+            "14"
+        ],
+        "expect_citation": true
+    },
+    {
+        "id": "price-match-exclusions",
+        "question": "Which items are excluded from AetherTech's price match guarantee?",
+        "expect_tool": "kb_only",
+        "must_contain_any": [
+            "clearance",
+            "open-box",
+            "marketplace"
+        ],
+        "expect_citation": true
+    },
+    {
+        "id": "return-window",
+        "question": "How many days do customers have to return an item to AetherTech?",
+        "expect_tool": "kb_only",
+        "must_contain": [
+            "30"
+        ],
+        "expect_citation": true
+    },
+    {
+        "id": "data-security",
+        "question": "How does AetherTech protect customer data?",
+        "expect_tool": "kb_only",
+        "must_contain_any": [
+            "AES",
+            "TLS"
+        ],
+        "expect_citation": true
+    },
+    {
+        "id": "kb-payment-and-fraud",
+        "question": "What payment methods does AetherTech accept for enterprise accounts, and what triggers a temporary fraud verification hold?",
+        "expect_tool": "kb_only",
+        "must_contain_any": [
+            "wire transfer",
+            "ach",
+            "net 30",
+            "net 60"
+        ],
+        "must_contain": [
+            "1,000"
+        ],
+        "expect_citation": true
+    },
+    {
+        "id": "kb-shipping-address-change",
+        "question": "Can I change my shipping address after placing an order with AetherTech, and under what condition?",
+        "expect_tool": "kb_only",
+        "must_contain": [
+            "processing"
+        ],
+        "must_contain_any": [
+            "shipped",
+            "order id",
+            "whatsapp"
+        ],
+        "expect_citation": true
+    },
+    {
+        "id": "kb-damaged-order-doa",
+        "question": "How long do I have to report an order that arrives damaged or missing parts at AetherTech?",
+        "expect_tool": "kb_only",
+        "must_contain": [
+            "48"
+        ],
+        "must_contain_any": [
+            "doa",
+            "replacement"
+        ],
+        "expect_citation": true
+    },
+    {
+        "id": "kb-e-waste-recycling",
+        "question": "How can I recycle old laptops or batteries through AetherTech?",
+        "expect_tool": "kb_only",
+        "must_contain_any": [
+            "free",
+            "recycling",
+            "shipping label"
+        ],
+        "expect_citation": true
+    },
+    {
+        "id": "kb-shopify-scopes-and-sync",
+        "question": "What permissions are required when connecting the AetherTech Shopify app, and what is the real-time inventory sync latency?",
+        "expect_tool": "kb_only",
+        "must_contain_any": [
+            "read_products",
+            "write_inventory",
+            "read_orders",
+            "write_fulfillments"
+        ],
+        "must_contain": [
+            "5 seconds"
+        ],
+        "expect_citation": true
+    },
+    {
+        "id": "kb-api-key-rotation",
+        "question": "How often do AetherTech API keys expire, and what grace period option is available when rotating the secret key?",
+        "expect_tool": "kb_only",
+        "must_contain": [
+            "365",
+            "12"
+        ],
+        "expect_citation": true
+    },
+    {
+        "id": "kb-shopify-error-429-422",
+        "question": "In the AetherTech Shopify integration, what causes error code 429 and error code 422, and how do you fix them?",
+        "expect_tool": "kb_only",
+        "must_contain_any": [
+            "100",
+            "batching",
+            "sku",
+            "get_catalog_sku"
+        ],
+        "expect_citation": true
+    },
+    {
+        "id": "kb-warranty-terms",
+        "question": "What are the standard limited warranty periods for AetherTech branded products, third-party components, and refurbished items?",
+        "expect_tool": "kb_only",
+        "must_contain": [
+            "2",
+            "1",
+            "90"
+        ],
+        "expect_citation": true
+    },
+    {
+        "id": "kb-warranty-exclusions",
+        "question": "What actions or conditions void AetherTech's standard limited hardware warranty?",
+        "expect_tool": "kb_only",
+        "must_contain_any": [
+            "overclocking",
+            "overvolting",
+            "liquid",
+            "void-stickers",
+            "physical damage"
+        ],
+        "expect_citation": true
+    },
+    {
+        "id": "kb-aethercare-deductible",
+        "question": "What does the AetherCare extended protection plan cover, and what are the deductibles for products under $500 versus $500 and up?",
+        "expect_tool": "kb_only",
+        "must_contain": [
+            "25",
+            "50"
+        ],
+        "must_contain_any": [
+            "accidental damage",
+            "battery"
+        ],
+        "expect_citation": true
+    },
+    {
+        "id": "kb-cross-doc-warranty-sync",
+        "question": "How do AetherTech's extended warranty products relate to the Shopify integration and the warranty claim turnaround time?",
+        "expect_tool": "kb_only",
+        "must_contain_any": [
+            "shopify",
+            "sync",
+            "7-10",
+            "7–10",
+            "business days"
+        ],
+        "expect_citation": true
+    },
+    {
+        "id": "web-news",
+        "question": "What is the latest news about Groq?",
+        "expect_tool": "web_only",
+        "expect_citation": true
+    },
+    {
+        "id": "web-shopify-api-updates",
+        "question": "What are the latest Shopify Admin API updates or release notes in 2026?",
+        "expect_tool": "web_only",
+        "must_contain_any": [
+            "shopify",
+            "api"
+        ],
+        "expect_citation": true
+    },
+    {
+        "id": "web-aes-tls-standards",
+        "question": "What are the current NIST or IETF recommendations regarding TLS 1.3 and AES-256 encryption?",
+        "expect_tool": "web_only",
+        "must_contain_any": [
+            "tls 1.3",
+            "aes-256",
+            "encryption"
+        ],
+        "expect_citation": true
+    },
+    {
+        "id": "both-price-match-competitors",
+        "question": "According to AetherTech's policy, which competitors qualify for price matching, and what is the current status or headquarters location of Best Buy?",
+        "expect_tool": "both",
+        "must_contain_any": [
+            "amazon",
+            "best buy",
+            "newegg"
+        ],
+        "expect_citation": true
+    },
+    {
+        "id": "both-warranty-vs-external-gpu",
+        "question": "How does AetherTech's 1-year direct warranty on third-party GPUs work according to our documents, and what is NVIDIA's standard warranty policy on GeForce GPUs?",
+        "expect_tool": "both",
+        "must_contain_any": [
+            "1 year",
+            "nvidia",
+            "warranty"
+        ],
+        "expect_citation": true
+    },
+    {
+        "id": "both-klarna-financing-overview",
+        "question": "Does AetherTech accept Klarna financing, and how does Klarna generally describe its pay-over-time or financing options?",
+        "expect_tool": "both",
+        "must_contain": [
+            "klarna"
+        ],
+        "expect_citation": true
+    },
+    {
+        "id": "greeting",
+        "question": "Hi, what can you do?",
+        "expect_tool": "none"
+    },
+    {
+        "id": "none-capability-check",
+        "question": "Hello! Can you explain in one sentence how you decide between searching documents and searching the web?",
+        "expect_tool": "none"
+    },
+    {
+        "id": "not-in-documents",
+        "question": "What is the CEO's favourite colour?",
+        "expect_tool": "kb_only",
+        "must_contain_any": [
+            "couldn't find",
+            "could not find",
+            "no information",
+            "don't have",
+            "not mentioned",
+            "not found"
+        ],
+        "expect_citation": false
+    },
+    {
+        "id": "not-in-documents-kb104",
+        "question": "What exact diagnostic steps are listed in KB-DOC-104 before starting an AetherTech warranty claim?",
+        "expect_tool": "kb_only",
+        "must_contain_any": [
+            "couldn't find",
+            "could not find",
+            "no information",
+            "don't have",
+            "not mentioned",
+            "not found"
+        ],
+        "expect_citation": false
+    },
+    {
+        "id": "not-in-documents-support-hours",
+        "question": "What are AetherTech's exact customer support phone operating hours and holiday schedule?",
+        "expect_tool": "kb_only",
+        "must_contain_any": [
+            "couldn't find",
+            "could not find",
+            "no information",
+            "don't have",
+            "not mentioned",
+            "not found"
+        ],
+        "expect_citation": false
+    },
+    {
+        "id": "edge-vague-kb-first",
+        "question": "What happens if my secret is compromised?",
+        "expect_tool": "kb_only",
+        "must_contain_any": [
+            "rotate",
+            "api",
+            "revoke",
+            "secret"
+        ],
+        "expect_citation": true
+    },
+    {
+        "id": "edge-specific-error-401",
+        "question": "Why would a Shopify sync fail with Error Code 401 and what should be checked when pasting the secret?",
+        "expect_tool": "kb_only",
+        "must_contain_any": [
+            "401",
+            "api key",
+            "whitespace",
+            "re-authenticate"
+        ],
+        "expect_citation": true
+    }
+]
