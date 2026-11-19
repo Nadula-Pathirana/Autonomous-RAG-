@@ -4,7 +4,7 @@ from langchain_core.tools import tool
 # pyrefly: ignore[missing-import]
 from tavily import TavilyClient
 
-from config import MAX_WEB_RESULTS, TAVILY_API_KEY
+from config import MAX_WEB_CHARS,MAX_WEB_RESULTS, TAVILY_API_KEY
 from autonomous_rag.exceptions import friendly_error
 from autonomous_rag.logger import get_logger
 from autonomous_rag.sources import web_source
@@ -35,7 +35,7 @@ def run_web_search(query: str) -> tuple[str, list[dict]]:
     for r in results:
         title = r.get("title") or "Untitled"
         url = r.get("url", "")
-        content = r.get("content", "")
+        content = r.get("content", "")[:MAX_WEB_CHARS]
         parts.append(f"[{title}]({url})\n{content}")
         sources.append(web_source(title, url, content))
 
